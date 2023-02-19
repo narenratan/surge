@@ -28,6 +28,7 @@ setup(
     cmake_source_dir="../..",
     cmake_args=[
         "-DSURGE_BUILD_PYTHON_BINDINGS=TRUE",
+        "-DSURGE_COMPILE_BLOCK_SIZE=8",
         "-DSURGE_SKIP_JUCE_FOR_RACK=TRUE",
         "-DSURGE_SKIP_ODDSOUND_MTS=TRUE",
         "-DSURGE_SKIP_VST3=TRUE",
