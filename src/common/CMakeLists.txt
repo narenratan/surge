@@ -31,10 +31,12 @@ else()
   target_compile_definitions(luajit-5.1 INTERFACE HAS_LUA=0)
 endif()
 
+surge_add_lib_subdirectory(sst/sst-basic-blocks)
 surge_add_lib_subdirectory(sst/sst-cpputils)
 surge_add_lib_subdirectory(sst/sst-plugininfra)
 surge_add_lib_subdirectory(sst/sst-filters)
 surge_add_lib_subdirectory(sst/sst-waveshapers)
+surge_add_lib_subdirectory(sst/sst-effects)
 
 set(PEGTL_BUILD_TESTS OFF CACHE BOOL "")
 set(PEGTL_BUILD_EXAMPLES OFF CACHE BOOL "")
@@ -146,6 +148,8 @@ add_library(${PROJECT_NAME}
   dsp/WavetableScriptEvaluator.h
   dsp/effects/BBDEnsembleEffect.cpp
   dsp/effects/BBDEnsembleEffect.h
+  dsp/effects/BonsaiEffect.cpp
+  dsp/effects/BonsaiEffect.h
   dsp/effects/ChorusEffect.h
   dsp/effects/ChorusEffectImpl.h
   dsp/effects/CombulatorEffect.cpp
@@ -238,8 +242,9 @@ add_library(${PROJECT_NAME}
   dsp/effects/chowdsp/tape/LossFilter.h
   dsp/effects/chowdsp/tape/ToneControl.cpp
   dsp/effects/chowdsp/tape/ToneControl.h
+  dsp/effects/AudioInputEffect.cpp
+  dsp/effects/AudioInputEffect.h
   dsp/filters/AllpassFilter.h
-  dsp/filters/BiquadFilter.cpp
   dsp/filters/BiquadFilter.h
   dsp/filters/VectorizedSVFilter.cpp
   dsp/filters/VectorizedSVFilter.h
@@ -276,21 +281,9 @@ add_library(${PROJECT_NAME}
   dsp/oscillators/WavetableOscillator.h
   dsp/oscillators/WindowOscillator.cpp
   dsp/oscillators/WindowOscillator.h
-  dsp/utilities/DSPUtils.cpp
   dsp/utilities/DSPUtils.h
-  dsp/utilities/FastMath.h
-  dsp/utilities/LanczosResampler.cpp
-  dsp/utilities/LanczosResampler.h
   dsp/utilities/SSEComplex.h
   dsp/utilities/SSESincDelayLine.h
-  dsp/vembertech/basic_dsp.cpp
-  dsp/vembertech/basic_dsp.h
-  dsp/vembertech/lipol.cpp
-  dsp/vembertech/lipol.h
-  dsp/vembertech/portable_intrinsics.h
-  dsp/vembertech/shared.h
-  dsp/vembertech/vt_dsp.h
-  dsp/vembertech/vt_dsp_endian.h
   globals.h
   resource.h
   version.cpp.in
@@ -378,6 +371,8 @@ target_link_libraries(${PROJECT_NAME}
   sst-filters
   sst-filters-extras
   sst-waveshapers
+  sst-basic-blocks
+  sst-effects
 
   surge::oddsound-mts
   surge::sqlite

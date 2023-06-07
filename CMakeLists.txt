@@ -14,7 +14,7 @@ if(NOT BUILD_TESTING)
   option(BUILD_TESTING "" OFF)
 endif()
 
-project(Surge VERSION 1.2.0 LANGUAGES C CXX ASM)
+project(Surge VERSION 1.3.0 LANGUAGES C CXX ASM)
 
 # Banner {{{
 message(STATUS "It's Surge XT, folks! Version is ${PROJECT_VERSION}")
@@ -33,6 +33,26 @@ if (NOT EXISTS "${SURGE_SOURCE_DIR}/libs/tuning-library/README.md")
           "To resolve this, please run `git submodule update --init --recursive` and re-run CMake!")
 endif()
 
+# }}}
+
+# Fail on 32 bit except on windows {{{
+if (${CMAKE_SIZEOF_VOID_P} EQUAL 4)
+  if (WIN32)
+    message(STATUS "Windows 32 bit build is lightly tested")
+  else()
+    # If you hit this error and want to try and do a 32 bit build on your Linux variant
+    # most likely you will need to conditionally ifdef out the Spring Reverb and a few
+    # things. We would happily merge that conditional compilation. The straztegy is basically
+    # add a 'is 32 bit linux' compile flag to surge common, use that to make the SpringReverb
+    # a nullptr in Effects.cpp and skipped code in the C++, test. etc... The branch where you
+    # can add this flag is where we add the -msse2 flag in the GNU/CLang branch below, to get
+    # started
+    message(WARNING "32 Bit Builds are only available on Windows.")
+    message(WARNING "If you are building on an r-pi, install a 64 bit OS.")
+    message(WARNING "If you want to help fix this, see the comment in CMakeLists.txt.")
+    message(FATAL_ERROR "Stopping compilation")
+  endif()
+endif()
 # }}}
 
 # Global compiler/linker settings {{{
@@ -180,7 +200,7 @@ include(cmake/stage-extra-content.cmake)
 add_custom_target(code-quality-pipeline-checks)
 
 # Check 1: The extra content is properly specified.
-add_dependencies(code-quality-pipeline-checks download-extra-content)
+# add_dependencies(code-quality-pipeline-checks download-extra-content)
 
 # Clang Format checks
 set(CLANG_FORMAT_DIRS src)

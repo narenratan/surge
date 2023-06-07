@@ -1,3 +1,24 @@
+/*
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 #include "PatchSelector.h"
 /*
 ** Surge Synthesizer is Free and Open Source Software
@@ -27,6 +48,13 @@
 #include "SurgeJUCEHelpers.h"
 #include "AccessibleHelpers.h"
 #include "SurgeJUCEHelpers.h"
+
+/*
+ * It is an arbitrary number that we set as an ID for patch menu items.
+ * It is not necessarily to be unique among all menu items, only among a sub menu, so it can
+ * be a constant.
+ */
+static constexpr int ID_TO_PRESELECT_MENU_ITEMS = 636133;
 
 namespace Surge
 {
@@ -575,27 +603,9 @@ void PatchSelector::showClassicMenu(bool single_category)
     contextMenu.addColumnBreak();
     Surge::Widgets::MenuCenteredBoldLabel::addToMenuAsSectionHeader(contextMenu, "FUNCTIONS");
 
-    auto initAction = [this]() {
-        int i = 0;
-
-        bool lookingForFactory = (storage->initPatchCategoryType == "Factory");
-        for (auto p : storage->patch_list)
-        {
-            if (p.name == storage->initPatchName &&
-                storage->patch_category[p.category].name == storage->initPatchCategory &&
-                storage->patch_category[p.category].isFactory == lookingForFactory)
-            {
-                loadPatch(i);
-                break;
-            }
-
-            ++i;
-        }
-    };
-
     auto sge = firstListenerOfType<SurgeGUIEditor>();
 
-    contextMenu.addItem(Surge::GUI::toOSCase("Initialize Patch"), initAction);
+    contextMenu.addItem(Surge::GUI::toOSCase("Initialize Patch"), [this]() { loadInitPatch(); });
 
     contextMenu.addItem(Surge::GUI::toOSCase("Set Current Patch as Default"), [this]() {
         Surge::Storage::updateUserDefaultValue(storage, Surge::Storage::InitialPatchName,
@@ -672,30 +682,47 @@ void PatchSelector::showClassicMenu(bool single_category)
                         psd->setEnclosingParentTitle("Rename Patch");
                         const auto priorPath = storage->patch_list[current_patch].path;
                         psd->onOK = [this, priorPath]() {
-                            fs::remove(priorPath);
-                            storage->refresh_patchlist();
-                            storage->initializePatchDb(true);
+                            /*
+                             * OK so the database doesn't like deleting files while it is indexing.
+                             * We should fix this (#6793) but for now put the delete action at the
+                             * end of the db processing thread. BUT that will run on the patchdb
+                             * thread so bounce it from here to there and then back here.
+                             */
+                            auto nextStep = [this, priorPath]() {
+                                auto doDelete = [this, priorPath]() {
+                                    fs::remove(priorPath);
+                                    storage->refresh_patchlist();
+                                    storage->initializePatchDb(true);
+                                };
+                                juce::MessageManager::getInstance()->callAsync(doDelete);
+                            };
+                            storage->patchDB->doAfterCurrentQueueDrained(nextStep);
                         };
                     });
             });
 
-            contextMenu.addItem(Surge::GUI::toOSCase("Delete Patch"), [this, initAction]() {
-                auto cb = juce::ModalCallbackFunction::create([this, initAction](int okcs) {
-                    if (okcs)
+            contextMenu.addItem(Surge::GUI::toOSCase("Delete Patch"), [this, sge]() {
+                auto onOk = [this]() {
+                    try
                     {
                         fs::remove(storage->patch_list[current_patch].path);
                         storage->refresh_patchlist();
                         storage->initializePatchDb(true);
-                        initAction();
                     }
-                });
+                    catch (const fs::filesystem_error &e)
+                    {
+                        std::ostringstream oss;
+                        oss << "Experienced filesystem error while deleting patch " << e.what();
+                        storage->reportError(oss.str(), "Filesystem Error");
+                    }
+                    isUser = false;
+                };
 
-                juce::AlertWindow::showOkCancelBox(
-                    juce::AlertWindow::NoIcon, "Delete Patch",
-                    std::string("Do you really want to delete\n") +
-                        storage->patch_list[current_patch].path.u8string() +
-                        "?\n\nThis cannot be undone!",
-                    "Yes", "No", nullptr, cb);
+                sge->alertOKCancel("Delete Patch",
+                                   std::string("Do you really want to delete\n") +
+                                       storage->patch_list[current_patch].path.u8string() +
+                                       "?\nThis cannot be undone!",
+                                   onOk);
             });
         }
 
@@ -762,7 +789,8 @@ void PatchSelector::showClassicMenu(bool single_category)
 
     if (sge)
     {
-        o = sge->popupMenuOptions(getBounds().getBottomLeft());
+        o = sge->popupMenuOptions(getBounds().getBottomLeft())
+                .withInitiallySelectedItem(ID_TO_PRESELECT_MENU_ITEMS);
     }
 
     contextMenu.showMenuAsync(o, [that = juce::Component::SafePointer(this)](int) {
@@ -1025,6 +1053,9 @@ bool PatchSelector::populatePatchMenuForCategory(int c, juce::PopupMenu &context
             auto item = juce::PopupMenu::Item(name).setEnabled(true).setTicked(thisCheck).setAction(
                 [this, p]() { this->loadPatch(p); });
 
+            if (thisCheck)
+                item.setID(ID_TO_PRESELECT_MENU_ITEMS);
+
             if (isFav && associatedBitmapStore)
             {
                 auto img = associatedBitmapStore->getImage(IDB_FAVORITE_MENU_ICON);
@@ -1087,7 +1118,11 @@ bool PatchSelector::populatePatchMenuForCategory(int c, juce::PopupMenu &context
 
         if (!single_category)
         {
-            contextMenu.addSubMenu(name, *subMenu, true, nullptr, amIChecked);
+            if (amIChecked)
+                contextMenu.addSubMenu(name, *subMenu, true, nullptr, amIChecked,
+                                       ID_TO_PRESELECT_MENU_ITEMS);
+            else
+                contextMenu.addSubMenu(name, *subMenu, true, nullptr, amIChecked);
         }
 
         main_e++;
@@ -1106,6 +1141,25 @@ void PatchSelector::loadPatch(int id)
 
         enqueue_sel_id = id;
         notifyValueChanged();
+    }
+}
+
+void PatchSelector::loadInitPatch()
+{
+    int i = 0;
+    bool lookingForFactory = (storage->initPatchCategoryType == "Factory");
+
+    for (auto p : storage->patch_list)
+    {
+        if (p.name == storage->initPatchName &&
+            storage->patch_category[p.category].name == storage->initPatchCategory &&
+            storage->patch_category[p.category].isFactory == lookingForFactory)
+        {
+            loadPatch(i);
+            break;
+        }
+
+        ++i;
     }
 }
 

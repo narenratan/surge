@@ -1,17 +1,24 @@
 /*
-** Surge Synthesizer is Free and Open Source Software
-**
-** Surge is made available under the Gnu General Public License, v3.0
-** https://www.gnu.org/licenses/gpl-3.0.en.html
-**
-** Copyright 2004-2021 by various individuals as described by the Git transaction log
-**
-** All source at: https://github.com/surge-synthesizer/surge.git
-**
-** Surge was a commercial product from 2004-2018, with Copyright and ownership
-** in that period held by Claes Johanson at Vember Audio. Claes made Surge
-** open source in September 2018.
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
 #include "PatchStoreDialog.h"
 #include "RuntimeFont.h"
@@ -55,7 +62,7 @@ struct PatchStoreDialogCategoryProvider : public Surge::Widgets::TypeAheadDataPr
                     if (it != c.name.end())
                     {
                         // De-duplicate if factory and user are both there.
-                        // Replies on fact that factory comes before yser in order.
+                        // Replies on fact that factory comes before user in order.
                         if (alreadySeen.find(c.name) != alreadySeen.end())
                         {
                             auto didx = alreadySeen[c.name];
@@ -215,6 +222,8 @@ PatchStoreDialog::PatchStoreDialog()
 
 PatchStoreDialog::~PatchStoreDialog() = default;
 
+void PatchStoreDialog::setShowFactoryOverwrite(bool s) { okOverButton->setVisible(s); }
+
 void PatchStoreDialog::setStorage(SurgeStorage *s)
 {
     storage = s;
@@ -316,10 +325,12 @@ void PatchStoreDialog::resized()
     auto h = 25;
     auto commH = getHeight() - (6 + showTagsField) * h + 8;
     auto xSplit = 70;
+    auto buttonHeight = 17;
     auto buttonWidth = 50;
     auto margin = 4;
     auto margin2 = 2;
     auto r = getLocalBounds().withHeight(h);
+    auto dialogCenter = getLocalBounds().getWidth() / 2;
     auto ce = r.withTrimmedLeft(xSplit)
                   .withTrimmedRight(margin2 * 3)
                   .reduced(margin)
@@ -355,15 +366,18 @@ void PatchStoreDialog::resized()
     commentEd->setBounds(q);
     ce = ce.translated(0, commH);
 
-    auto be = ce.withWidth(buttonWidth).withRightX(ce.getRight()).translated(0, margin2 * 3);
-    cancelButton->setBounds(be);
-    be = be.translated(-buttonWidth - margin, 0);
+    auto buttonRow = getLocalBounds().withHeight(buttonHeight).withY(ce.getY() + (margin2 * 3));
+
+    auto be =
+        buttonRow.withTrimmedLeft(dialogCenter - buttonWidth - margin2).withWidth(buttonWidth);
     okButton->setBounds(be);
+    be = buttonRow.withTrimmedLeft(dialogCenter + margin2).withWidth(buttonWidth);
+    cancelButton->setBounds(be);
 
     if (okOverButton->isVisible())
     {
-        be = be.translated(-buttonWidth - (margin * 2), 0);
-        okOverButton->setBounds(be.withLeft(be.getX() - buttonWidth));
+        be = ce.withWidth(buttonWidth * 2).withRightX(ce.getRight()).translated(0, margin2 * 3);
+        okOverButton->setBounds(be);
     }
 
     auto cl = r.withRight(xSplit).reduced(2).translated(0, margin2 * 3);

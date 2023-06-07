@@ -1,17 +1,24 @@
 /*
-** Surge Synthesizer is Free and Open Source Software
-**
-** Surge is made available under the Gnu General Public License, v3.0
-** https://www.gnu.org/licenses/gpl-3.0.en.html
-**
-** Copyright 2004-2020 by various individuals as described by the Git transaction log
-**
-** All source at: https://github.com/surge-synthesizer/surge.git
-**
-** Surge was a commercial product from 2004-2018, with Copyright and ownership
-** in that period held by Claes Johanson at Vember Audio. Claes made Surge
-** open source in September 2018.
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
 #include "FilterAnalysis.h"
 #include "RuntimeFont.h"
@@ -19,6 +26,13 @@
 #include <fmt/core.h>
 #include "sst/filters/FilterPlotter.h"
 #include <thread>
+#include "Tunings.h"
+
+static constexpr auto GRAPH_MIN_FREQ = 13.57f;
+static constexpr auto GRAPH_MAX_FREQ = 25087.f;
+
+static constexpr auto GRAPH_MIN_DB = -42.f;
+static constexpr auto GRAPH_MAX_DB = 18.f;
 
 namespace Surge
 {
@@ -144,18 +158,16 @@ void FilterAnalysis::paint(juce::Graphics &g)
 {
     auto &fs = editor->getPatch().scene[editor->current_scene].filterunit[whichFilter];
 
-    static constexpr auto lowFreq = 10.f;
-    static constexpr auto highFreq = 24000.f;
-    static constexpr auto dbMin = -42.f;
-    static constexpr auto dbMax = 12.f;
-    constexpr auto dbRange = dbMax - dbMin;
+    constexpr auto dbRange = GRAPH_MAX_DB - GRAPH_MIN_DB;
 
     auto freqToX = [&](float freq, int width) {
-        auto xNorm = std::log(freq / lowFreq) / std::log(highFreq / lowFreq);
+        auto xNorm = std::log(freq / GRAPH_MIN_FREQ) / std::log(GRAPH_MAX_FREQ / GRAPH_MIN_FREQ);
         return xNorm * (float)width;
     };
 
-    auto dbToY = [&](float db, int height) { return (float)height * (dbMax - db) / dbRange; };
+    auto dbToY = [&](float db, int height) {
+        return (float)height * (GRAPH_MAX_DB - db) / dbRange;
+    };
 
     std::string nm, snm;
 
@@ -171,12 +183,12 @@ void FilterAnalysis::paint(juce::Graphics &g)
 
     g.fillAll(skin->getColor(Colors::MSEGEditor::Background));
 
-    auto lb = getLocalBounds().transformedBy(getTransform().inverted());
-    auto dRect = lb.withTrimmedTop(15).reduced(4);
-    auto width = dRect.getWidth();
-    auto height = dRect.getHeight();
-    auto labelHeight = 9;
-    auto font = skin->fontManager->getLatoAtSize(7);
+    const auto lb = getLocalBounds().transformedBy(getTransform().inverted());
+    const auto dRect = lb.withTrimmedTop(18).reduced(4);
+    const auto width = dRect.getWidth();
+    const auto height = dRect.getHeight();
+    const auto labelHeight = 9;
+    const auto font = skin->fontManager->getLatoAtSize(7);
 
     // horizontal and vertical grids
     {
@@ -189,7 +201,7 @@ void FilterAnalysis::paint(juce::Graphics &g)
                            2000.f, 4000.f, 6000.f, 8000.f, 10000.f, 20000.f})
         {
             const auto xPos = freqToX(freq, width);
-            juce::Line line{juce::Point{xPos, 0.f}, juce::Point{xPos, (float)height}};
+            const juce::Line line{juce::Point{xPos, 0.f}, juce::Point{xPos, (float)height}};
 
             if (freq == 100.f || freq == 1000.f || freq == 10000.f)
             {
@@ -213,7 +225,7 @@ void FilterAnalysis::paint(juce::Graphics &g)
             g.drawFittedText(freqString, labelRect, juce::Justification::bottom, 1);
         }
 
-        for (float dB : {-36.f, -30.f, -24.f, -18.f, -12.f, -6.f, 0.f, 6.f})
+        for (float dB : {-36.f, -30.f, -24.f, -18.f, -12.f, -6.f, 0.f, 6.f, 12.f})
         {
             const auto yPos = dbToY(dB, height);
 
@@ -258,7 +270,8 @@ void FilterAnalysis::paint(juce::Graphics &g)
 
         if (nPoints == 0)
         {
-            auto yDraw = dbToY(-6, height);
+            const auto yDraw = dbToY(-6, height);
+
             plotPath.startNewSubPath(0, yDraw);
             plotPath.lineTo(dRect.getX() + width, yDraw);
         }
@@ -266,7 +279,7 @@ void FilterAnalysis::paint(juce::Graphics &g)
         {
             for (int i = 0; i < nPoints; ++i)
             {
-                if (freqAxis[i] < lowFreq / 2.f || freqAxis[i] > highFreq * 1.01f)
+                if (freqAxis[i] < GRAPH_MIN_FREQ / 2.f || freqAxis[i] > GRAPH_MAX_FREQ * 1.01f)
                 {
                     continue;
                 }
@@ -305,7 +318,7 @@ void FilterAnalysis::paint(juce::Graphics &g)
 
         g.reduceClipRegion(dRect);
 
-        auto cg = juce::ColourGradient::vertical(
+        const auto cg = juce::ColourGradient::vertical(
             skin->getColor(Colors::MSEGEditor::GradientFill::StartColor),
             skin->getColor(Colors::MSEGEditor::GradientFill::EndColor), dRect);
 
@@ -322,7 +335,31 @@ void FilterAnalysis::paint(juce::Graphics &g)
         g.strokePath(plotPath, juce::PathStrokeType(1.f, juce::PathStrokeType::JointStyle::curved));
     }
 
-    auto txtr = lb.withHeight(15);
+    {
+        auto gs = juce::Graphics::ScopedSaveState(g);
+
+        g.addTransform(juce::AffineTransform().translated(dRect.getX(), dRect.getY()));
+
+        // draws the ruler and a point to show the position of cutoff frequency and resonance
+        {
+            const double freq = std::pow(2, (evaluator->cutoff) / 12) * 440.0;
+            const auto xPos = freqToX(std::min(freq, 25000.0), width);
+            const int yPos = height - evaluator->resonance * height;
+            const float r = width * 0.0175f;
+
+            g.setColour(skin->getColor(Colors::MSEGEditor::Curve).withMultipliedAlpha(0.666));
+            g.drawVerticalLine(xPos, 0.f, height);
+            g.drawHorizontalLine(yPos, 0.f, width);
+
+            hotzone = juce::Rectangle<float>(xPos - r / 2.f, yPos - r / 2.f, r, r);
+
+            g.setColour(skin->getColor(isPressed ? Colors::MSEGEditor::CurveHighlight
+                                                 : Colors::MSEGEditor::Curve));
+            g.fillEllipse(hotzone);
+        }
+    }
+
+    const auto txtr = lb.withHeight(15);
 
     g.setColour(skin->getColor(Colors::Waveshaper::Preview::Text));
     g.setFont(skin->getFont(Fonts::Waveshaper::Preview::Title));
@@ -393,12 +430,134 @@ void FilterAnalysis::resized()
     auto t = getTransform().inverted();
     auto h = getHeight();
     auto w = getWidth();
+
     t.transformPoint(w, h);
 
     f1Button->setBounds(2, 2, 40, 15);
     f2Button->setBounds(w - 42, 2, 40, 15);
 
     catchUpStore = evaluator->outboundUpdates - 1; // because we need to rebuild the path
+}
+
+void FilterAnalysis::mouseDrag(const juce::MouseEvent &event)
+{
+    auto lb = getLocalBounds().transformedBy(getTransform().inverted());
+    auto dRect = lb.withTrimmedTop(15).reduced(4);
+
+    float rx0 = dRect.getX();
+    float rx1 = dRect.getX() + dRect.getWidth() - 1;
+    float ry0 = dRect.getY();
+    float ry1 = dRect.getY() + dRect.getHeight() - 1;
+
+    juce::Point<float> mousePoint =
+        event.getPosition()
+            .transformedBy(
+                juce::AffineTransform().translated(dRect.getX(), dRect.getY()).inverted())
+            .toFloat();
+
+    mousePoint.setX(std::clamp(mousePoint.getX(), rx0, rx1));
+    mousePoint.setY(std::clamp(mousePoint.getY(), ry0, ry1));
+
+    if (event.mods.isLeftButtonDown() && dRect.contains(mousePoint.toInt()))
+    {
+        auto &ss = editor->getPatch().scene[editor->current_scene];
+        auto &fs = ss.filterunit[whichFilter];
+
+        auto width = dRect.getWidth();
+        auto height = dRect.getHeight();
+
+        auto xNorm = mousePoint.x / (float)width;
+        auto freq = std::pow(GRAPH_MAX_FREQ / GRAPH_MIN_FREQ, xNorm) * GRAPH_MIN_FREQ;
+
+        float cutoff =
+            limit_range(12.0f * std::log2(freq / 440.0f), fs.cutoff.val_min.f, fs.cutoff.val_max.f);
+        float resonance = limit01((height - mousePoint.y) / (float)height);
+        float f = fs.cutoff.value_to_normalized(cutoff);
+
+        fs.cutoff.val.f = cutoff;
+        fs.resonance.val.f = resonance;
+
+        // assert if filter cutoff or resonance params are not assigned in SurgeGUIEditor.cpp
+        jassert(editor->filterCutoffSlider[whichFilter] != nullptr);
+        jassert(editor->filterResonanceSlider[whichFilter] != nullptr);
+
+        editor->filterCutoffSlider[whichFilter]->asControlValueInterface()->setValue(f);
+        editor->filterCutoffSlider[whichFilter]->setQuantitizedDisplayValue(f);
+        editor->filterCutoffSlider[whichFilter]->asJuceComponent()->repaint();
+
+        editor->filterResonanceSlider[whichFilter]->asControlValueInterface()->setValue(resonance);
+        editor->filterResonanceSlider[whichFilter]->setQuantitizedDisplayValue(resonance);
+        editor->filterResonanceSlider[whichFilter]->asJuceComponent()->repaint();
+
+        repushData();
+    }
+}
+
+// mouseDrag doesn't catch cases when we just click with the left mouse button,
+// mouseDrag only catches movements holding the button. So let's catch it here.
+// this is basically to be able to instantly change filter cutoff and resonance
+// just by clicking anywhere in the graph, no mouse movement required
+void FilterAnalysis::mouseDown(const juce::MouseEvent &event)
+{
+    auto lb = getLocalBounds().transformedBy(getTransform().inverted());
+    auto dRect = lb.withTrimmedTop(18).reduced(4);
+    auto where = event.position;
+    const bool withinHotzone = hotzone.contains(where.translated(-dRect.getX(), -dRect.getY()));
+
+    if (dRect.contains(where.toInt()))
+    {
+        isPressed = true;
+        hideCursor(where.toInt());
+        mouseDrag(event);
+    }
+}
+
+void FilterAnalysis::mouseUp(const juce::MouseEvent &event)
+{
+    auto lb = getLocalBounds().transformedBy(getTransform().inverted());
+    auto dRect = lb.withTrimmedTop(18).reduced(4);
+    const bool withinHotzone =
+        hotzone.contains(event.position.translated(-dRect.getX(), -dRect.getY()));
+
+    setMouseCursor(juce::MouseCursor::NormalCursor);
+
+    if (dRect.contains(event.position.toInt()))
+    {
+        isPressed = false;
+    }
+
+    if (cursorHidden)
+    {
+        showCursorAt(hotzone.getCentre().translated(dRect.getX(), dRect.getY()).toInt());
+    }
+
+    guaranteeCursorShown();
+}
+
+void FilterAnalysis::mouseMove(const juce::MouseEvent &event)
+{
+    auto lb = getLocalBounds().transformedBy(getTransform().inverted());
+    auto dRect = lb.withTrimmedTop(18).reduced(4);
+    bool reset = false;
+    const bool withinHotzone =
+        hotzone.contains(event.position.translated(-dRect.getX(), -dRect.getY()));
+
+    if (withinHotzone != isHovered)
+    {
+        isHovered = withinHotzone;
+        repaint();
+    }
+
+    if (isHovered)
+    {
+        setMouseCursor(juce::MouseCursor::UpDownLeftRightResizeCursor);
+        reset = true;
+    }
+
+    if (!reset)
+    {
+        setMouseCursor(juce::MouseCursor::NormalCursor);
+    }
 }
 
 } // namespace Overlays

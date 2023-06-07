@@ -1,18 +1,31 @@
 /*
-  ==============================================================================
-
-    This file was auto-generated!
-
-    It contains the basic framework code for a JUCE plugin editor.
-
-  ==============================================================================
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
 #include "SurgeFXProcessor.h"
 #include "SurgeFXEditor.h"
 #include "FxPresetAndClipboardManager.h"
 #include "tinyxml/tinyxml.h"
 #include "fmt/core.h"
+#include "SurgeStorage.h"
 
 struct Picker : public juce::Component
 {
@@ -129,6 +142,7 @@ SurgefxAudioProcessorEditor::SurgefxAudioProcessorEditor(SurgefxAudioProcessor &
         fxParamSliders[i].setChangeNotificationOnlyOnRelease(false);
         fxParamSliders[i].setEnabled(processor.getParamEnabled(i));
         fxParamSliders[i].onValueChange = [i, this]() {
+            this->processor.prepareParametersAbsentAudio();
             this->processor.setFXParamValue01(i, this->fxParamSliders[i].getValue());
             fxParamDisplay[i].setDisplay(
                 processor.getParamValueFromFloat(i, this->fxParamSliders[i].getValue()));
@@ -209,6 +223,7 @@ SurgefxAudioProcessorEditor::SurgefxAudioProcessorEditor(SurgefxAudioProcessor &
         fxAbsoluted[i].setTitle("Parameter " + std::to_string(i) + " Absoluted");
         addAndMakeVisibleRecordOrder(&(fxAbsoluted[i]));
 
+        processor.prepareParametersAbsentAudio();
         fxParamDisplay[i].setGroup(processor.getParamGroup(i).c_str());
         fxParamDisplay[i].setName(processor.getParamName(i).c_str());
         fxParamDisplay[i].setDisplay(processor.getParamValue(i));
@@ -252,6 +267,7 @@ SurgefxAudioProcessorEditor::~SurgefxAudioProcessorEditor()
 
 void SurgefxAudioProcessorEditor::resetLabels()
 {
+    processor.prepareParametersAbsentAudio();
     auto st = [](auto &thing, const std::string &title) {
         thing.setTitle(title);
         if (auto *handler = thing.getAccessibilityHandler())
@@ -455,6 +471,11 @@ void SurgefxAudioProcessorEditor::makeMenu()
             auto t = -1;
             c->QueryIntAttribute("i", &t);
             men.fxtype = t;
+            if (t == fxt_audio_input) // skip the "Audio In" effect
+            {
+                c = c->NextSiblingElement();
+                continue;
+            }
         }
         else
         {

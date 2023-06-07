@@ -1,17 +1,36 @@
 /*
-  ==============================================================================
-
-    This file was auto-generated!
-
-    It contains the basic framework code for a JUCE plugin processor.
-
-  ==============================================================================
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
 #include "SurgeFXProcessor.h"
 #include "SurgeFXEditor.h"
 #include "DebugHelpers.h"
 #include "UserDefaults.h"
+#include <fmt/core.h>
+
+#if LINUX
+// getCurrentPosition is deprecated in J7
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 //==============================================================================
 SurgefxAudioProcessor::SurgefxAudioProcessor()
@@ -158,6 +177,7 @@ bool SurgefxAudioProcessor::isBusesLayoutSupported(const BusesLayout &layouts) c
 void SurgefxAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
                                          juce::MidiBuffer &midiMessages)
 {
+    audioRunning = true;
     if (resettingFx || !surge_effect)
         return;
 
@@ -184,6 +204,20 @@ void SurgefxAudioProcessor::processBlock(juce::AudioBuffer<float> &buffer,
     if (surge_effect->checkHasInvalidatedUI())
     {
         resetFxParams(true);
+    }
+
+    auto sampl = buffer.getNumSamples();
+    if (nonLatentBlockMode && ((sampl & ~(BLOCK_SIZE - 1)) != sampl))
+    {
+        nonLatentBlockMode = false;
+        input_position = 0;
+        output_position = 0;
+        memset(output_buffer, 0, sizeof(output_buffer));
+        memset(input_buffer, 0, sizeof(input_buffer));
+        memset(sidechain_buffer, 0, sizeof(sidechain_buffer));
+
+        setLatencySamples(BLOCK_SIZE);
+        updateHostDisplay(ChangeDetails().withLatencyChanged(true));
     }
 
     auto mainInput = getBusBuffer(buffer, true, 0);
@@ -668,6 +702,23 @@ void SurgefxAudioProcessor::setupStorageRanges(Parameter *start, Parameter *endI
     storage_id_end = max_id + 1;
 }
 
+void SurgefxAudioProcessor::prepareParametersAbsentAudio()
+{
+    if (!audioRunning)
+    {
+        if (getEffectType() == fxt_airwindows)
+        {
+            /*
+             * Airwindows needs to set up its internal state with a process
+             * See #6897
+             */
+            float dL alignas(16)[BLOCK_SIZE], dR alignas(16)[BLOCK_SIZE];
+            memset(dL, 0, sizeof(dL));
+            memset(dR, 0, sizeof(dR));
+            surge_effect->process_ringout(dL, dR);
+        }
+    }
+}
 //==============================================================================
 // This creates new instances of the plugin..
 juce::AudioProcessor *JUCE_CALLTYPE createPluginFilter() { return new SurgefxAudioProcessor(); }

@@ -1,21 +1,31 @@
 /*
-** Surge Synthesizer is Free and Open Source Software
-**
-** Surge is made available under the Gnu General Public License, v3.0
-** https://www.gnu.org/licenses/gpl-3.0.en.html
-**
-** Copyright 2004-2020 by various individuals as described by the Git transaction log
-**
-** All source at: https://github.com/surge-synthesizer/surge.git
-**
-** Surge was a commercial product from 2004-2018, with Copyright and ownership
-** in that period held by Claes Johanson at Vember Audio. Claes made Surge
-** open source in September 2018.
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
-#pragma once
+#ifndef SURGE_SRC_COMMON_MODULATIONSOURCE_H
+#define SURGE_SRC_COMMON_MODULATIONSOURCE_H
 
 #include <random>
+#include <cassert>
+
 #include "basic_dsp.h"
 
 enum modsrctype
@@ -484,8 +494,12 @@ template <int NDX = 1> class ControllerModulationSourceVector : public Modulatio
                 }
                 else
                 {
-                    float a = (mode == Modulator::SmoothingMode::FAST_EXP ? 0.99f : 0.9f) * 44100 *
-                              samplerate_inv * b;
+                    // Don't allow us to push outside of [target,value]
+                    // so clamp the interpolator to 0,1
+                    float a =
+                        std::clamp((mode == Modulator::SmoothingMode::FAST_EXP ? 0.99f : 0.9f) *
+                                       44100 * samplerate_inv * b,
+                                   0.f, 1.f);
 
                     value[idx] = (1 - a) * value[idx] + a * target[idx];
                 }
@@ -516,11 +530,8 @@ template <int NDX = 1> class ControllerModulationSourceVector : public Modulatio
                 value[idx] = target[idx];
             }
 
-            // GitHub issue #6835
-            if (std::isinf(value[idx]))
-            {
-                value[idx] = 0.f;
-            }
+            // Just in case #6835 sneaks back
+            assert(!std::isnan(value[idx]) && !std::isinf(value[idx]));
         }
     }
 
@@ -676,3 +687,5 @@ class AlternateModulationSource : public ModulationSource
     bool state;
     float nv, pv;
 };
+
+#endif // SURGE_SRC_COMMON_MODULATIONSOURCE_H

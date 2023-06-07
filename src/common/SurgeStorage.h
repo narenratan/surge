@@ -1,19 +1,27 @@
 /*
-** Surge Synthesizer is Free and Open Source Software
-**
-** Surge is made available under the Gnu General Public License, v3.0
-** https://www.gnu.org/licenses/gpl-3.0.en.html
-**
-** Copyright 2004-2020 by various individuals as described by the Git transaction log
-**
-** All source at: https://github.com/surge-synthesizer/surge.git
-**
-** Surge was a commercial product from 2004-2018, with Copyright and ownership
-** in that period held by Claes Johanson at Vember Audio. Claes made Surge
-** open source in September 2018.
-*/
+ * Surge XT - a free and open source hybrid synthesizer,
+ * built by Surge Synth Team
+ *
+ * Learn more at https://surge-synthesizer.github.io/
+ *
+ * Copyright 2018-2023, various authors, as described in the GitHub
+ * transaction log.
+ *
+ * Surge XT is released under the GNU General Public Licence v3
+ * or later (GPL-3.0-or-later). The license is found in the "LICENSE"
+ * file in the root of this repository, or at
+ * https://www.gnu.org/licenses/gpl-3.0.en.html
+ *
+ * Surge was a commercial product from 2004-2018, copyright and ownership
+ * held by Claes Johanson at Vember Audio during that period.
+ * Claes made Surge open source in September 2018.
+ *
+ * All source for Surge XT is available at
+ * https://github.com/surge-synthesizer/surge
+ */
 
-#pragma once
+#ifndef SURGE_SRC_COMMON_SURGESTORAGE_H
+#define SURGE_SRC_COMMON_SURGESTORAGE_H
 #include "globals.h"
 #include "Parameter.h"
 #include "ModulationSource.h"
@@ -59,6 +67,8 @@ const int n_osc_params = 7;
 const int n_egs = 2;
 const int n_fx_params = 12;
 const int n_fx_slots = 16;
+const int n_fx_chains = 4;
+const int n_fx_per_chain = 4;
 const int n_send_slots = 4;
 const int FIRipol_M = 256;
 const int FIRipol_M_bits = 8;
@@ -105,10 +115,11 @@ const int FIRoffsetI16 = FIRipolI16_N >> 1;
 //                             added Extend to Delay Feedback parameter (allows negative delay)
 // 19 -> 20 (XT 1.1 release)   added voice envelope mode, but super late so don't break 19
 // 20 -> 21 (XT 1.2 nightlies) added absolutable mode for Combulator Offset 1/2 (to match the behavior of Center parameter)
-//                                   oddsound_as_mts_main
+//                             added oddsound_as_mts_main
+// 21 -> 22 (XT 1.3 nighlies)  added new ring modulator modes in the mixer, add bonsai distortion effect
 // clang-format on
 
-const int ff_revision = 21;
+const int ff_revision = 22;
 
 const int n_scene_params = 273;
 const int n_global_params = 11 + n_fx_slots * (n_fx_params + 1); // each param plus a type
@@ -176,6 +187,21 @@ enum NoiseColorChannels
 {
     STEREO = 0,
     MONO = 1
+};
+
+enum RingModMode
+{
+    rmm_ring = 0,
+    rmm_cxor43_0,
+    rmm_cxor43_1,
+    rmm_cxor43_2,
+    rmm_cxor43_3,
+    rmm_cxor43_4,
+    rmm_cxor93_0,
+    rmm_cxor93_1,
+    rmm_cxor93_2,
+    rmm_cxor93_3,
+    rmm_cxor93_4
 };
 
 enum lfo_trigger_mode
@@ -258,7 +284,7 @@ inline bool uses_wavetabledata(int i)
 
 enum fxslot_positions
 {
-    fxslot_ains1,
+    fxslot_ains1 = 0,
     fxslot_ains2,
     fxslot_bins1,
     fxslot_bins2,
@@ -274,6 +300,22 @@ enum fxslot_positions
     fxslot_send4,
     fxslot_global3,
     fxslot_global4
+};
+
+// clang-format off
+static int constexpr fxslot_order[n_fx_slots] =
+    {fxslot_ains1,   fxslot_ains2,   fxslot_ains3,   fxslot_ains4,
+     fxslot_bins1,   fxslot_bins2,   fxslot_bins3,   fxslot_bins4,
+     fxslot_send1,   fxslot_send2,   fxslot_send3,   fxslot_send4,
+     fxslot_global1, fxslot_global2, fxslot_global3, fxslot_global4};
+// clang-format on
+
+enum fxchains
+{
+    fxc_scenea = 0,
+    fxc_sceneb,
+    fxc_send,
+    fxc_global,
 };
 
 const char fxslot_names[n_fx_slots][NAMECHARS] = {
@@ -306,6 +348,10 @@ const char fxslot_shortnames[n_fx_slots][8] = {
     "FX A1", "FX A2", "FX B1", "FX B2", "FX S1", "FX S2", "FX G1", "FX G2",
     "FX A3", "FX A4", "FX B3", "FX B4", "FX S3", "FX S4", "FX G3", "FX G4",
 };
+const std::string fxslot_shortoscname[n_fx_slots] = {
+    "fx/a/1", "fx/a/2", "fx/b/1", "fx/b/2", "fx/send/1", "fx/send/2", "fx/global/1", "fx/global/2",
+    "fx/a/3", "fx/a/4", "fx/b/3", "fx/b/4", "fx/send/3", "fx/send/4", "fx/global/3", "fx/global/4",
+};
 
 enum fx_type
 {
@@ -337,6 +383,8 @@ enum fx_type
     fxt_waveshaper,
     fxt_mstool,
     fxt_spring_reverb,
+    fxt_bonsai,
+    fxt_audio_input,
 
     n_fx_types,
 };
@@ -368,19 +416,21 @@ const char fx_type_names[n_fx_types][32] = {"Off",
                                             "Treemonster",
                                             "Waveshaper",
                                             "Mid-Side Tool",
-                                            "Spring Reverb"};
+                                            "Spring Reverb",
+                                            "Bonsai",
+                                            "Audio Input"};
 
 const char fx_type_shortnames[n_fx_types][16] = {
-    "Off",         "Delay",      "Reverb 1",      "Phaser",       "Rotary",     "Distortion",
-    "EQ",          "Freq Shift", "Conditioner",   "Chorus",       "Vocoder",    "Reverb 2",
-    "Flanger",     "Ring Mod",   "Airwindows",    "Neuron",       "Graphic EQ", "Resonator",
-    "CHOW",        "Exciter",    "Ensemble",      "Combulator",   "Nimbus",     "Tape",
-    "Treemonster", "Waveshaper", "Mid-Side Tool", "Spring Reverb"};
+    "Off",         "Delay",      "Reverb 1",      "Phaser",        "Rotary",     "Distortion",
+    "EQ",          "Freq Shift", "Conditioner",   "Chorus",        "Vocoder",    "Reverb 2",
+    "Flanger",     "Ring Mod",   "Airwindows",    "Neuron",        "Graphic EQ", "Resonator",
+    "CHOW",        "Exciter",    "Ensemble",      "Combulator",    "Nimbus",     "Tape",
+    "Treemonster", "Waveshaper", "Mid-Side Tool", "Spring Reverb", "Bonsai",     "Audio In"};
 
-const char fx_type_acronyms[n_fx_types][8] = {"OFF", "DLY", "RV1",  "PH",  "ROT", "DIST", "EQ",
-                                              "FRQ", "DYN", "CH",   "VOC", "RV2", "FL",   "RM",
-                                              "AW",  "NEU", "GEQ",  "RES", "CHW", "XCT",  "ENS",
-                                              "CMB", "NIM", "TAPE", "TM",  "WS",  "M-S",  "SRV"};
+const char fx_type_acronyms[n_fx_types][8] = {
+    "OFF", "DLY", "RV1", "PH",   "ROT", "DIST", "EQ",  "FRQ", "DYN", "CH",
+    "VOC", "RV2", "FL",  "RM",   "AW",  "NEU",  "GEQ", "RES", "CHW", "XCT",
+    "ENS", "CMB", "NIM", "TAPE", "TM",  "WS",   "M-S", "SRV", "BON", "IN"};
 
 enum fx_bypass
 {
@@ -617,7 +667,10 @@ struct LFOStorage
 
 struct FxStorage
 {
-    // Just a heads up: if you change this, please go look at fx_reorder in SurgeStorage too!
+    // Just a heads up: if you change this, please go look at reorderFx in SurgeSynthesizer too!
+    FxStorage(fxslot_positions slot) : fxslot(slot) {}
+    FxStorage() = delete;
+    fxslot_positions fxslot;
     Parameter type;
     Parameter return_level;
     Parameter p[n_fx_params];
@@ -846,6 +899,26 @@ struct DAWExtraStateStorage
             int filterInt{0};
         } modulationEditorState;
 
+        struct OscilloscopeOverlayState
+        {
+            int mode = 0; // 0 for waveform, 1 for spectrum.
+
+            // Waveform values.
+            float trigger_speed = 0.5f;
+            float trigger_level = 0.5f;
+            float trigger_limit = 0.5f;
+            float time_window = 0.5f;
+            float amp_window = 0.5f;
+            int trigger_type = 0;
+            bool dc_kill = false;
+            bool sync_draw = false;
+
+            // Spectrum values.
+            float noise_floor = 0.f;
+            float max_db = 1.f;
+            float decay_rate = 1.f;
+        } oscilloscopeOverlayState;
+
         struct TuningOverlayState
         {
             int editMode = 0;
@@ -911,11 +984,22 @@ class SurgePatch
 
     void load_patch(const void *data, int size, bool preset);
     unsigned int save_patch(void **data);
+    Parameter *parameterFromOSCName(std::string stName);
 
     // data
     SurgeSceneStorage scene[n_scenes], morphscene;
-    FxStorage fx[n_fx_slots];
+
+    FxStorage fx[n_fx_slots]{
+        FxStorage(fxslot_ains1),   FxStorage(fxslot_ains2),   FxStorage(fxslot_bins1),
+        FxStorage(fxslot_bins2),   FxStorage(fxslot_send1),   FxStorage(fxslot_send2),
+        FxStorage(fxslot_global1), FxStorage(fxslot_global2), FxStorage(fxslot_ains3),
+        FxStorage(fxslot_ains4),   FxStorage(fxslot_bins3),   FxStorage(fxslot_bins4),
+        FxStorage(fxslot_send3),   FxStorage(fxslot_send4),   FxStorage(fxslot_global3),
+        FxStorage(fxslot_global4)};
     int scene_start[n_scenes], scene_size;
+
+    std::unordered_map<std::string, Parameter *> param_ptr_by_oscname;
+
     // streaming name for splitpoint is splitkey (due to legacy)
     Parameter scene_active, scenemode, splitpoint;
     Parameter volume;
@@ -1030,6 +1114,18 @@ namespace Surge
 {
 namespace Storage
 {
+struct ScenesOutputData
+{
+    std::shared_ptr<float[BLOCK_SIZE]> sceneData[n_scenes][N_OUTPUTS]{{nullptr, nullptr},
+                                                                      {nullptr, nullptr}};
+
+  public:
+    ScenesOutputData();
+    const std::shared_ptr<float[BLOCK_SIZE]> &getSceneData(int scene, int channel) const;
+    void provideSceneData(int scene, int channel, float *data);
+    bool thereAreClients(int scene) const;
+};
+
 struct FxUserPreset;
 struct ModulatorPreset;
 } // namespace Storage
@@ -1043,6 +1139,11 @@ struct GlobalData;
 }
 } // namespace Surge
 
+namespace sst::basic_blocks::tables
+{
+struct SurgeSincTableProvider;
+}
+
 class alignas(16) SurgeStorage
 {
   public:
@@ -1051,9 +1152,10 @@ class alignas(16) SurgeStorage
     // this will be a pointer to an aligned 2 x BLOCK_SIZE_OS array
     float audio_otherscene alignas(16)[2][BLOCK_SIZE_OS];
 
-    float sinctable alignas(16)[(FIRipol_M + 1) * FIRipol_N * 2];
-    float sinctable1X alignas(16)[(FIRipol_M + 1) * FIRipol_N];
-    short sinctableI16 alignas(16)[(FIRipol_M + 1) * FIRipolI16_N];
+    std::unique_ptr<sst::basic_blocks::tables::SurgeSincTableProvider> sincTableProvider;
+    float *sinctable, *sinctable1X;
+    int16_t *sinctableI16;
+
     float table_dB alignas(16)[512], table_envrate_lpf alignas(16)[512],
         table_envrate_linear alignas(16)[512], table_glide_exp alignas(16)[512],
         table_glide_log alignas(16)[512];
@@ -1087,24 +1189,31 @@ class alignas(16) SurgeStorage
     static std::string skipPatchLoadDataPathSentinel;
 
     // In Surge XT, SurgeStorage can now keep a cache of errors it reports to the user
-    void reportError(const std::string &msg, const std::string &title);
+    enum ErrorType
+    {
+        GENERAL_ERROR = 1,
+        AUDIO_INPUT_LATENCY_WARNING = 2,
+    };
+    void reportError(const std::string &msg, const std::string &title,
+                     const ErrorType errorType = GENERAL_ERROR, bool reportToStdout = true);
     struct ErrorListener
     {
         // This can be called from any thread, beware! But it is called only
         // when an error occursm so if you want to be sloppy and just lock, that's OK
-        virtual void onSurgeError(const std::string &msg, const std::string &title) = 0;
+        virtual void onSurgeError(const std::string &msg, const std::string &title,
+                                  const ErrorType &errorType) = 0;
     };
     std::unordered_set<ErrorListener *> errorListeners;
     // this mutex is ONLY locked in the error path and when registering a listener
     // (from the UI thread)
     std::mutex preListenerErrorMutex;
-    std::vector<std::pair<std::string, std::string>> preListenerErrors;
+    std::vector<std::tuple<std::string, std::string, ErrorType>> preListenerErrors;
     void addErrorListener(ErrorListener *l)
     {
         errorListeners.insert(l);
         std::lock_guard<std::mutex> g(preListenerErrorMutex);
         for (auto p : preListenerErrors)
-            l->onSurgeError(p.first, p.second);
+            l->onSurgeError(std::get<0>(p), std::get<1>(p), std::get<2>(p));
         preListenerErrors.clear();
     }
     void removeErrorListener(ErrorListener *l) { errorListeners.erase(l); }
@@ -1170,6 +1279,8 @@ class alignas(16) SurgeStorage
     float modsource_vu[n_modsources];
     void setSamplerate(float sr);
     float cpu_falloff;
+
+    bool oscListenerRunning{false};
 
     bool getOverrideDataHome(std::string &value);
     void createUserDirectory();
@@ -1254,6 +1365,10 @@ class alignas(16) SurgeStorage
         BYPASS_HARDCLIP // scene only
     } hardclipMode = HARDCLIP_TO_18DBFS,
       sceneHardclipMode[n_scenes] = {HARDCLIP_TO_18DBFS, HARDCLIP_TO_18DBFS};
+
+    void loadTuningFromSCL(const fs::path &p);
+    void loadMappingFromKBM(const fs::path &p);
+    std::function<void()> onTuningChanged{nullptr};
 
     float note_to_pitch(float x);
     float note_to_pitch_inv(float x);
@@ -1455,6 +1570,8 @@ class alignas(16) SurgeStorage
 
     std::atomic<int> otherscene_clients;
 
+    Surge::Storage::ScenesOutputData scenesOutputData;
+
     std::unordered_map<int, std::string> helpURL_controlgroup;
     std::unordered_map<std::string, std::string> helpURL_paramidentifier;
     std::unordered_map<std::string, std::string> helpURL_specials;
@@ -1587,3 +1704,5 @@ std::string findReplaceSubstring(std::string &source, const std::string &from,
 ** See GitHub issue #469
 */
 #define TINYXML_SAFE_TO_ELEMENT(expr) ((expr) ? (expr)->ToElement() : NULL)
+
+#endif // SURGE_SRC_COMMON_SURGESTORAGE_H
